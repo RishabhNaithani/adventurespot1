@@ -3,7 +3,7 @@
 import { useEffect, useRef } from "react";
 
 interface ScrollVideoCanvasProps {
-  videoSrc: string;
+  videoSrc: string | string[]; // Support single string or array for multiple formats
   fallbackImageSrc?: string;
 }
 
@@ -14,17 +14,29 @@ export default function ScrollVideoCanvas({ videoSrc, fallbackImageSrc }: Scroll
     const canvas = canvasRef.current;
     if (!canvas) return;
     
-    // Optimize canvas by disabling alpha channel since it's an opaque background
     const ctx = canvas.getContext("2d", { alpha: false });
     if (!ctx) return;
 
     const video = document.createElement("video");
-    video.src = videoSrc;
     video.muted = true;
     video.playsInline = true;
     video.crossOrigin = "anonymous";
     video.preload = "auto";
     video.setAttribute('webkit-playsinline', 'webkit-playsinline');
+
+    // Handle multiple sources if provided
+    if (Array.isArray(videoSrc)) {
+      videoSrc.forEach(src => {
+        const source = document.createElement("source");
+        source.src = src;
+        // Basic type detection from extension
+        if (src.endsWith(".webm")) source.type = "video/webm";
+        else if (src.endsWith(".mp4")) source.type = "video/mp4";
+        video.appendChild(source);
+      });
+    } else {
+      video.src = videoSrc;
+    }
 
     let animationFrameId: number;
     let targetTime = 0;
@@ -32,7 +44,6 @@ export default function ScrollVideoCanvas({ videoSrc, fallbackImageSrc }: Scroll
 
     const drawFrame = () => {
       if (video.videoWidth && video.videoHeight) {
-        // Calculate dimensions to cover the screen while maintaining aspect ratio
         const scale = Math.max(canvas.width / video.videoWidth, canvas.height / video.videoHeight);
         const x = (canvas.width / 2) - (video.videoWidth / 2) * scale;
         const y = (canvas.height / 2) - (video.videoHeight / 2) * scale;
@@ -40,29 +51,26 @@ export default function ScrollVideoCanvas({ videoSrc, fallbackImageSrc }: Scroll
       }
     };
 
-    video.addEventListener("loadedmetadata", () => {
+    const onLoadedMetadata = () => {
       canvas.width = window.innerWidth;
       canvas.height = window.innerHeight;
       video.currentTime = 0.01;
-      // Provide an initial draw as a placeholder while the user hasn't scrolled
       drawFrame();
-    });
+    };
+
+    video.addEventListener("loadedmetadata", onLoadedMetadata);
+    // Some browsers need 'canplay' or 'canplaythrough' to be reliable
+    video.addEventListener("canplay", drawFrame);
 
     const renderLoop = () => {
-      // readyState >= 2 means HAVE_CURRENT_DATA (can play current frame)
       if (video.readyState >= 2 && video.duration) {
         const scrollY = window.scrollY;
-        // Total scrollable height minus the viewport
         const maxScroll = document.documentElement.scrollHeight - window.innerHeight;
         const scrollProgress = maxScroll > 0 ? scrollY / maxScroll : 0;
         
         targetTime = scrollProgress * video.duration;
-        
-        // Linear interpolation (lerp) for smooth scrubbing
-        // The factor (0.08) determines how "heavy" or smoothed the scrub feels
         currentTime += (targetTime - currentTime) * 0.08;
         
-        // Only set currentTime if there's a meaningful change to avoid jitter
         if (Math.abs(video.currentTime - currentTime) > 0.005) {
           video.currentTime = currentTime;
         }
@@ -72,7 +80,6 @@ export default function ScrollVideoCanvas({ videoSrc, fallbackImageSrc }: Scroll
       animationFrameId = requestAnimationFrame(renderLoop);
     };
 
-    // Kick off continuous animation loop
     animationFrameId = requestAnimationFrame(renderLoop);
 
     const handleResize = () => {
@@ -83,18 +90,22 @@ export default function ScrollVideoCanvas({ videoSrc, fallbackImageSrc }: Scroll
 
     window.addEventListener("resize", handleResize);
 
+    // Initial trigger to start loading properly in some mobile browsers
+    video.load();
+
     return () => {
       window.removeEventListener("resize", handleResize);
+      video.removeEventListener("loadedmetadata", onLoadedMetadata);
+      video.removeEventListener("canplay", drawFrame);
       cancelAnimationFrame(animationFrameId);
-      // Clean up video memory
+      video.pause();
       video.removeAttribute("src");
       video.load();
     };
-  }, [videoSrc]); // fallbackImageSrc is ignored but kept in props for compatibility
+  }, [videoSrc]);
 
   return (
     <>
-      {/* We keep the fallback image underneath the canvas, so that if the canvas fails or takes a moment to load on slow mobile connections, there is not a blank black screen. */}
       {fallbackImageSrc && (
         <div 
           className="fixed top-0 left-0 w-full h-full -z-20 bg-cover bg-center"

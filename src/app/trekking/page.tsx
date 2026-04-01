@@ -5,7 +5,7 @@ export default function TrekkingPage() {
   return (
     <main className="min-h-[300vh] relative">
       <ScrollVideoCanvas 
-        videoSrc="/videos/trekking.mp4" 
+        videoSrc={["/videos/trekking.webm", "/videos/trekking.mp4"]} 
         fallbackImageSrc="/images/trekking-fallback.jpg" 
       />
 

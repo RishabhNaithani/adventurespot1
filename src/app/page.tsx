@@ -6,7 +6,7 @@ export default function Home() {
     <main className="min-h-[300vh] relative">
       {/* Background Canvas */}
       <ScrollVideoCanvas 
-        videoSrc="/videos/bungy.mp4" 
+        videoSrc={["/videos/bungy.webm", "/videos/bungy.mp4"]} 
         fallbackImageSrc="/images/bungy-fallback.jpg" 
       />
 
